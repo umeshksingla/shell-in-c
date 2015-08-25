@@ -107,7 +107,7 @@ int execute_command(char**command,int len){
 
 int main(){
 
-		char a[1024],b[1024],c[1024];
+		char a[1024],b[1024],c[1024],e[1024];
 		char*d="~";
 		ssize_t size = 0;
 		size_t line;
@@ -130,8 +130,22 @@ int main(){
 		if(cmp==0){
 			printf("<%s@%s:%s> ",getpwuid(geteuid())->pw_name,a,d);
 		}
+
 		else if(cmp>0){
 			printf("%s\n",b);	
+			int p=0,q;
+			e[p]=d[0];
+			p++;
+			for(q=strlen(c);q<strlen(b);q++){
+			//	printf("%c\t",b[q]);
+				e[p]=b[q];
+				p++;
+			}
+			e[p++]='\0';
+			printf("<%s@%s:%s> ",getpwuid(geteuid())->pw_name,a,e);
+		}
+
+		else if (cmp<0){
 			printf("<%s@%s:%s> ",getpwuid(geteuid())->pw_name,a,b);
 		}
 				
