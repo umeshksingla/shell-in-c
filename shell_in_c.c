@@ -1,6 +1,6 @@
 #include <unistd.h>
 #include <sys/types.h>
-#include <sys/wait.h>
+//#include <sys/wait.h>
 #include <stdio.h>
 #include <pwd.h>
 #include <string.h>
@@ -97,23 +97,26 @@ int execute_command(char**command,int len){
 			} 
 			while (!WIFEXITED(status) && !WIFSIGNALED(status));
 			*/
-			if(!strcmp(command[len],"&")==0)
-					printf("yes\n");
-					waitpid(pid,&status,0);
+			/*if(!strcmp(command[len],"&")==0)
+					printf("yes\n");*/
+				/*	waitpid(pid,&status,0);*/
 		//}
+			wait();
 		return 1;
 }
 
 int main(){
 
-		char a[1024],b[1024];
-
+		char a[1024],b[1024],c[1024];
+		char*d="~";
 		ssize_t size = 0;
 		size_t line;
 		int pos = 0;
 
 		char*delim1=";";
-		char*delim2=" ";
+		char*delim2=" \t";
+		
+		getcwd(c,sizeof c);
 		while(1){
 				//buffer = (char*)malloc(size * sizeof(char));
 				/*if(!buffer){
@@ -122,8 +125,15 @@ int main(){
 				  }*/
 		gethostname(a,sizeof a);
 		getcwd(b,sizeof b);
-		printf("<%s@%s:%s> ",getpwuid(geteuid())->pw_name,a,b);
-
+		
+		int cmp = strcmp(b,c);
+		if(cmp==0){
+			printf("<%s@%s:%s> ",getpwuid(geteuid())->pw_name,a,d);
+		}
+		else if(cmp>0){
+			printf("%s\n",b);	
+			printf("<%s@%s:%s> ",getpwuid(geteuid())->pw_name,a,b);
+		}
 				
 				char*buffer = (char*)malloc(sizeof(char)*1024);
 				
