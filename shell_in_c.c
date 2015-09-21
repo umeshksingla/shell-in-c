@@ -107,35 +107,22 @@ void print_prompt(){
 
 void sig_handler(int signo){
 		int i,j;
-		if(signo==SIGINT)
-		{		
+		if(signo==SIGINT){		
 				printf("\n");
 				print_prompt();
 				fflush(stdout);
 		}	
-		else if(signo == SIGTSTP){
-				
-				printf("i m in sigtstp\n");
-				pro*temp =(pro*)malloc(sizeof(pro));
-				temp->pid = current_proc;
-				strcpy(temp->name, current_proc_name);
-				temp->index = 0;
-				temp->bg = 1;
-				insert_backg(temp);
 
-				kill(current_proc,SIGSTOP);
+		else if(signo == SIGTSTP){
+				//nothing
 		}
 
-		if(signo == SIGCHLD){
-
+		else if(signo == SIGCHLD){
 				int status;
 				pid_t pid;
-				while((pid=waitpid(-1,&status,WNOHANG))>0)                    //return if no child has changed state
-				{
-						if(pid>0)
-						{
-								if(WIFEXITED(status))				
-								{		
+				while((pid=waitpid(-1,&status,WNOHANG))>0){                    //return if no child has changed state
+						if(pid>0){
+								if(WIFEXITED(status)){		
 										pro*temp = backg;		
 										while(temp){
 												if(temp->pid==pid){
@@ -143,17 +130,12 @@ void sig_handler(int signo){
 												}
 												temp=temp->next;
 										}
-										if(temp!=NULL)
-										{
-												fprintf(stdout,"\n%s with pid %d exited normally\n",temp->name,pid);										
-												if(temp->bg){
-													
-														i = delete_backg(pid);
-												}
+										if(temp!=NULL){
+												fprintf(stdout,"\n%s with pid %d exited normally\n",temp->name,pid);
+												i = delete_backg(pid);
 										}
 								}
-								else if(WIFSIGNALED(status))
-								{
+								else if (WIFSIGNALED(status)) { 
 										pro*temp = backg;		
 										while(temp){
 												if(temp->pid==pid){
@@ -161,19 +143,16 @@ void sig_handler(int signo){
 												}
 												temp=temp->next;
 										}
-										if(temp!=NULL)
-										{
-												fprintf(stdout,"\n%s with pid %d signalled to exit\n",temp->name,pid);										
-												if(temp->bg){	
-													 
-														j = delete_backg(pid);
-												}
+										if(temp!=NULL){
+												fprintf(stdout,"\n%s with pid %d signalled to exit\n",temp->name,pid);
+												j = delete_backg(pid);
 										}
 								}
 						}
 				}
 		}
 }
+
 char**split_line(char*line,char*delim){				
 		/*splits the command line according to the delim and returns the array of individual strings*/
 		size_t size = 32;
@@ -292,6 +271,7 @@ int fg_c(char**command){
 				if(temp->index == id){
 						printf("%s\n",temp->name);
 						pgid=getpgid(temp->pid);
+						temp->bg=0;
 						tcsetpgrp(shell_terminal,pgid);  // give control of terminal to the process from our shell
 						child_pid=pgid;	
 						if(killpg(pgid,SIGCONT)<0)		//send a SIGCONT signal to the process group
@@ -380,6 +360,7 @@ int loop_pipe(char ***cmd)
 		int i, status;
 
 		signal(SIGCHLD,sig_handler);
+		signal(SIGTSTP,sig_handler);
 		//printf("inside loop\n");
 
 		if(strcmp((*cmd)[0],"fg")==0){	//	"fg" bring a background process to foreground
@@ -483,9 +464,11 @@ int loop_pipe(char ***cmd)
 						strcpy(current_proc_name,(*cmd)[0]);
 						status = execvp((*cmd)[0], *cmd);
 						if(status<0)
-								if(i<0)
+								if(i<0){
 										perror((*cmd)[0]);
-						i=0;
+										return -1;
+								}
+						i=-1;
 						exit(EXIT_FAILURE);
 				}
 				else
@@ -499,8 +482,15 @@ int loop_pipe(char ***cmd)
 								int status;
 								child_pid=pid;
 								waitpid(pid,&status,WUNTRACED);	// wait for child till it terminates or stops
-								if(WIFSTOPPED(status))
-										printf("%s stopped\n",(*cmd)[0]);
+								if(WIFSTOPPED(status)){
+										P->pid = pid;
+										strcpy(P->name,(*cmd)[0]);
+										P->bg = 1;
+										P->next = NULL;
+										P->index = 0;
+										insert_backg(P);
+										printf("\n%s stopped\n",(*cmd)[0]);
+								}
 								tcsetpgrp(shell_terminal,shell_pgid);	
 						}
 						else{
@@ -575,7 +565,6 @@ int main(){
 
 				char**commands={NULL};
 				commands = split_line(buffer,delim1);					//splitting the line scanned by ;
-
 				int i,status,j;
 				int len=-1,len1=-1;
 
@@ -584,7 +573,7 @@ int main(){
 						char **cmd[100];
 						int k=0;
 						char**args;
-
+					
 						args=split_line(commands[i],"|");
 
 						int s=0;
@@ -592,6 +581,7 @@ int main(){
 								char**each;
 								each = split_line(args[s]," ");
 								cmd[k++] = each;
+								
 						}
 						cmd[k++]=NULL;
 						status = loop_pipe(cmd);
