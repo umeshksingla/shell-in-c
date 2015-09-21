@@ -1,3 +1,6 @@
+/*----------created by umeshksingla on 15/09/2015-----------------*/
+
+//standard libraries
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -10,11 +13,62 @@
 #include <sys/stat.h>
 #include <sys/ptrace.h>
 #include <fcntl.h>
-uid_t getuid(void);
+#include <sys/resource.h>
 
-char cwd[2048];
+uid_t getuid(void);
 struct passwd * getpwuid (uid_t uid);
 int gethostname (char *a,size_t len);
+
+char cwd[2048];
+pid_t current_proc;
+char current_proc_name[100];
+pid_t shell_id;
+
+struct pro{
+		int index;
+		pid_t pid;
+		int bg;
+		char name[100];
+		struct pro*next;
+		//char args[100][100];
+};
+
+typedef struct pro pro;
+
+pro*backg=NULL;
+
+int backl = 1;
+
+void insert_backg(pro*P){
+
+		if(backg==NULL){
+				P->index = backl++;
+				backg = P;
+				return;
+		}
+		P->index = backl++;
+		P->next=backg;
+		backg=P;
+		return;
+}
+
+int delete_backg(pid_t pid){
+		pro*temp=backg;
+		pro*p;
+		if(temp && temp->pid == pid){
+				backg = temp->next;
+				free(temp);
+				return 5;
+		}
+		while(temp && temp->pid != pid){
+				p=temp;
+				temp=temp->next;
+		}
+		if(!temp)
+				return -5;
+		p->next=temp->next;
+		free(temp);
+}
 
 void print_prompt(){
 
@@ -34,7 +88,6 @@ void print_prompt(){
 				e[p]=d[0];
 				p++;
 				for(q=strlen(cwd);q<strlen(b);q++){
-						//	printf("%c\t",b[q]);
 						e[p]=b[q];
 						p++;
 				}
@@ -48,11 +101,36 @@ void print_prompt(){
 }
 
 void sig_handler(int signo){
-		if(signo == SIGINT){
-				//print_prompt();
-				printf("\n");
-				print_prompt();
-				fflush(stdout);
+
+		if(signo == SIGTSTP){
+				printf("i m in sigtstp\n");
+				pro*temp =(pro*)malloc(sizeof(pro));
+				temp->pid = current_proc;
+				strcpy(temp->name, current_proc_name);
+				temp->index = 0;
+				temp->bg = 1;
+				insert_backg(temp);
+				
+				kill(current_proc,SIGSTOP);
+		}
+
+		if(signo == SIGCHLD){
+
+				union wait wstat;
+				pid_t pid;
+
+				while(1){
+						pid = wait3 (&wstat, WNOHANG, (struct rusage *)NULL );
+						if (pid == 0)
+								return;
+						else if (pid == -1)
+								return;
+						else {
+								int u = delete_backg(pid);
+								printf ("\nPid: %d\nReturn code: %d\n", pid, wstat.w_retcode);
+						}
+
+				}
 		}
 }
 char**split_line(char*line,char*delim){				
@@ -74,14 +152,11 @@ char**split_line(char*line,char*delim){
 				commands[pos] = token;
 				pos++;
 
-				//printf("%s\n",token);
 				token = strtok(NULL,delim);
-				//printf("--------%s\n",token);
 
 				if(pos>=size){	// if pos becomes >= size, we need to allocate more memory for further commands
 						size+=size;
 						commands = realloc(commands,(size)*sizeof(char*));
-						//printf("yes\n");
 				}
 		}
 		commands[pos] = NULL;	//last ensured to be NULL
@@ -92,162 +167,302 @@ int quit_c(){
 		return 10;
 }
 
-int execute_command(char**command){
-		/*executes the command and takes whole command as an input*/
+int cd_c(char**command){
 
 		int status;
-		pid_t pid1,pid2;
-
-		if(strcmp(command[0],"quit")==0){	// if the user types "exit", just return the status to be 0
-				//printf("inside exit\n");
-				status = quit_c();
-				return status;
-		}	
-		else if(strcmp(command[0],"cd")==0){	//	if the user types "cd ..."
-				//printf("inside cd\n");
-
-				if(!command[1]){
-						status=chdir(cwd);
-				}
-				else if (strcmp(command[1],"~")==0){
-						status=chdir(cwd);
-				}
-				else if(command[1][0]=='~' && command[1][1]!='\0'){
-						char l[2048];
-						//int len=0;
-						strcpy(l,cwd);
-						command[1]++;
-						strcat(l,command[1]);
-						status=chdir(l);
-				}
-				else{
-						status=chdir(command[1]);
-				}
-				return status;
+		char l[2048];
+		if(!command[1]){
+				status=chdir(cwd);
 		}
-		else if(strcmp(command[0],"pinfo")==0){			// "pinfo" for printing process related details and its status
+		else if (strcmp(command[1],"~")==0){
+				status=chdir(cwd);
+		}
+		else if(command[1][0]=='~' && command[1][1]!='\0'){
+				strcpy(l,cwd);
+				command[1]++;
+				strcat(l,command[1]);
+				status=chdir(l);
+		}
+		else{
+				status=chdir(command[1]);
+		}
+		return status;
+}
 
-				char p[50];
+int pinfo_c(char**command){
 
-				if(!command[1]){						//if no process id is given, we print out info for current process i.e. a.out
-						sprintf(p,"%d",getpid());
+		char p[100],r[100];
+		char**arg;
+		int status;
+		pid_t pid1;
+
+		if(!command[1])						//if no process id is given, we print out info for current process i.e. a.out
+				sprintf(p,"%d",getpid());
+		else
+				sprintf(p,"%s",command[1]);
+
+		arg=(char**)malloc(sizeof(char*)*1024);
+		
+		if(!arg)
+				fprintf(stderr,"Memory can't be allocated to arg.");	//if enough memory is not available for allocating to the commands
+
+		arg[0]="cat";
+		strcpy(r,"/proc/");
+		strcat(r,p);
+		strcat(r,"/status");
+		arg[1]=r;
+		pid1 = fork();
+		wait(&status);
+
+		if (pid1 == 0) {
+				status = execvp(*arg, arg);
+				if (status<0) {
+						perror("pinfo: ERROR while executing pinfo.");
+						return -5;
+				}			
+				return 1;
+		} 
+}
+
+int jobs_c(){
+		pro*temp=backg;
+		if(!temp)
+				printf("No background processes running\n");
+		while(temp){
+				printf("[%d]\t%s\tPID:[%d]\n",temp->index,temp->name,temp->pid);
+				temp=temp->next;
+		}
+		return 1;
+}
+
+int fg_c(char**command){
+
+		int id;
+		if(command[1])
+				id = atoi(command[1]);
+		else{
+				printf("No argument passed to fg\n");
+				return -1;
+		}
+		pro *temp=backg;
+		while(temp){
+				if(temp->index == id){
+						printf("%s\n",temp->name);
+						kill(temp->pid,SIGCONT);
+						wait(NULL);
+						int i = delete_backg(temp->pid);
+						if(i<0)
+								printf("No such process\n");
+						return i;
 				}
-				else{
-						sprintf(p,"%s",command[1]);
-				}
+				temp=temp->next;
+		}
+		return -5;
+}
 
-				char**arg;
-				char r[100];
-				arg=(char**)malloc(sizeof(char*)*1024);
+int overkill_c(){
+		pro*temp = backg;
+		while(temp){
+				if(kill(temp->pid,SIGKILL)!=0)
+						printf("Can't kill %s\tPID:[%d]\n",temp->name,temp->pid);
+				else
+						printf("Killed %s\n",temp->name);
+				temp=temp->next;
+		}
+		return 1;
+}
 
-				if(!arg){
-						fprintf(stderr,"Memory can't be allocated to arg.");	//if enough memory is not available for allocating to the commands
-				}
+int kjob_c(char**command){
 
-				arg[0]="cat";
-				strcpy(r,"/proc/");
-				strcat(r,p);
-				strcat(r,"/status");
-				arg[1]=r;
-
-				pid1 = fork();
-				wait(&status);
-
-				if (pid1 == 0) {
-						status = execvp(*arg, arg);
-						if (status<0) {
-								perror("pinfo: ERROR while executing pinfo.");
-								_exit(0);
-						}			
-						_exit(1);
-
-				} 
-				else if(pid1 < 0){
-						perror("pinfo: can't execute.");
-						_exit(0);
-				} 
-
+		if(!command[1]){
+				printf("Process ID required\n");
+				return 1;
+		}
+		if(!command[2]){
+				printf("Signal not specified.\n");
 				return 1;
 		}
 
+		int index = atoi(command[1]);
+		int signal = atoi(command[2]);
+		pro*temp=backg;
 
-		else{
+		while(temp){
+				if(temp->index == index){
+						break;
+				}
+				temp=temp->next;
+		}
+		if(!temp){
+				printf("No such Process.\n");
+				return 1;
+		}
+		if(kill(temp->pid,signal)==0)
+				printf("Signal sent to %s Process\n",temp->name);
+		else
+				printf("Signal can't be sent. Some Error Occured.\n");
+		return 1;
+}
 
-				//for system commands
-				pid2 = fork();		// divide into two
+int check_for_bg(char**command){
+		int i;
+		for(i=0;command[i];i++){
+				if(strcmp(command[i],"&")==0 && command[i+1]==NULL) {
+						command[i]=NULL;
+						return i;	// it's background, so true
+				}
+		}
+		return 0;	// it's not in background, so false
+}
 
-				//printf("reached here.2\n");
-				//printf("pid %d\n",pid);
-				wait(&status);
-				if (pid2 == 0) {
-						//printf("forking done%d\n",pid);
-						// Child process
-						int input,output,i;
+int loop_pipe(char ***cmd) 
+{
+		int p[2];
+		pid_t pid;
+		int fd_in = 0;
+		int i, status;
+		
+		signal(SIGCHLD,sig_handler);
+		//printf("inside loop\n");
+		
+		if(strcmp((*cmd)[0],"fg")==0){	//	"fg" bring a background process to foreground
 
-						for(i=0;command[i];i++){
-								//printf("printing cmd '%s' at %d \n",command[i],i);
-								if(strcmp(command[i],"<")==0){	// input is being redirected from some file
-										command[i]=NULL;
-										if(command[i+1]){
-												input=open(command[i+1],O_RDONLY);
+				i = fg_c(*cmd);
+				return i;
+		}
+		else if(strcmp((*cmd)[0],"cd")==0){	//	change the directory
+
+				i = cd_c(*cmd);
+		}	
+		else if(strcmp((*cmd)[0],"quit")==0){	// if the user types "exit", just return the status to be 0
+
+				return quit_c();
+		}
+
+		while (*cmd != NULL)
+		{
+				pipe(p);
+				if ((pid = fork()) < 0)
+				{
+						exit(EXIT_FAILURE);
+				}
+				else if (pid == 0)
+				{
+						//printf("nfdknk %s\n",(*cmd)[0]);
+						dup2(fd_in, 0); //change the input according to the old one 
+						if (*(cmd + 1) != NULL)
+								dup2(p[1], 1);
+						close(p[0]);
+
+						if(strcmp((*cmd)[0],"pinfo")==0){			// "pinfo" for printing process related details and its status
+
+								i = pinfo_c(*cmd);
+						}
+
+						else if(strcmp((*cmd)[0],"jobs")==0){		//	"jobs" for printing currently running jobsi
+
+								i = jobs_c();
+						}
+						
+						else if(strcmp((*cmd)[0],"overkill")==0){	//	"overkill" kills al background process at once
+
+								i = overkill_c();
+						}
+						else if(strcmp((*cmd)[0],"kjob")==0){	//	"kjob" sends a signal to a particular process
+
+								i = kjob_c(*cmd);
+						}
+
+						int input,output,q;
+						for(q=0;(*cmd)[q]!=NULL;q++){
+								if(strcmp((*cmd)[q],"<")==0){  // input is being redirected from some file
+										(*cmd)[q]=NULL;
+										if((*cmd)[q+1]){
+												input=open((*cmd)[q+1],O_RDONLY,S_IRWXU);
 												dup2(input,0);
+												close(input);
 										}
 										else
-												fprintf(stderr,"No input file specified with <");										
+												fprintf(stderr,"No input file specified with <");        
 								}
 
-								if(strcmp(command[i],">")==0){	//	output is being redirected to some file
-										command[i]=NULL;
-										if(command[i+1]){
-												output=open(command[i+1],O_RDONLY | O_WRONLY | O_CREAT, S_IRWXU);
+								else if(strcmp((*cmd)[q],">")==0){ //  output is being redirected to some file
+										(*cmd)[q]=NULL;
+										if((*cmd)[q+1]){
+												output=open((*cmd)[q+1],O_TRUNC | O_RDONLY | O_WRONLY | O_CREAT, S_IRWXU);
 												dup2(output,1);
+												close(output);
 										}
 										else
 												fprintf(stderr,"No output file specified with >");
 								}
-																
+
+								else if(strcmp((*cmd)[q],">>")==0){ //  output is being redirected to some file
+										(*cmd)[q]=NULL;
+										if((*cmd)[q+1]){
+												output=open((*cmd)[q+1],O_APPEND | O_RDONLY | O_WRONLY | O_CREAT, S_IRWXU);
+												dup2(output,1);
+												close(output);
+										}
+										else
+												fprintf(stderr,"No output file specified with >");
+								}
 						}
 						
-						close(input);
-						close(output);
+						int bg = check_for_bg(*cmd);
+						if(bg){
+								cmd[bg]=NULL;
+						}
+						current_proc = pid;
+						signal(SIGTSTP,sig_handler);
+						strcpy(current_proc_name,(*cmd)[0]);
+						status = execvp((*cmd)[0], *cmd);
+						if(status<0)
+								if(i<0)
+									perror((*cmd)[0]);
+						i=0;
+						exit(EXIT_FAILURE);
+				}
+				else
+				{
+						pro*P = (pro*)malloc(1*sizeof(pro));
+						int bg = check_for_bg(*cmd);
+						if(!bg){	// if not background, then wait
+								waitpid(pid,NULL,WUNTRACED);
+						}
+						else{
+								if(bg){
+										cmd[bg]=NULL;
+								}
+								P->pid = pid;
+								strcpy(P->name,(*cmd)[0]);
+								P->bg = 1;
+								P->next = NULL;
+								P->index = 0;
+								insert_backg(P);
+						}
 
-						status = execvp(*command, command);
-
-						if (status<0) {
-								perror(command[0]);
-								_exit(0);
-						}			
-						_exit(1);
-
-				} 
-				else if(pid2 < 0){
-						// Error forking
-						//printf("error pid %d\n",pid);
-						perror(command[0]);
-						_exit(0);
-				} 
-
-				return 1;
+						close(p[1]);
+						fd_in = p[0]; //save the input for the next command
+						cmd++;
+				}
 		}
+		return i;
 }
 
-
-
 int main(){
-
-		//char a[1024],b[1024],e[1024];
-		//char*d="~";
+		shell_id = getpid();
 		ssize_t size = 0;
 		size_t line;
 		int pos = 0;
 
 		char*delim1=";";
 		char*delim2=" \t";
-
+		char*delim3="|";
 		getcwd(cwd,sizeof cwd);											//get the directory name from where the shell is invoked
 
-		if(signal(SIGINT,sig_handler)==SIG_ERR)
-				printf("\ncan't catch ctrl c\n");
+		signal(SIGINT,SIG_IGN);
+		signal(SIGTSTP,SIG_IGN);
 
 		while(1){
 
@@ -264,7 +479,6 @@ int main(){
 						m=getchar();
 				}
 				buffer[k]='\0';
-				//printf("%s\n",buffer);
 
 				char**commands={NULL};
 				commands = split_line(buffer,delim1);					//splitting the line scanned by ;
@@ -274,26 +488,29 @@ int main(){
 
 				for(i=0;commands[i]!=NULL && commands[i][0]!='\n';i++){	//iterating over each command along with its arguments
 						len++;
-						//printf("%s\n",commands[i]);
+						char **cmd[100];
+						int k=0;
 						char**args;
-						args = split_line(commands[i],delim2);			//splitting a command by " "
-						if(args[0]!=NULL)
-								status = execute_command(args);					//executing the command
+						
+						args=split_line(commands[i],"|");
 
-						//printf("status = %d\n",status);				
-
+						int s=0;
+						for(s=0;args[s];s++){
+								char**each;
+								each = split_line(args[s]," ");
+								cmd[k++] = each;
+						}
+						cmd[k++]=NULL;
+						status = loop_pipe(cmd);
 						if(status==10){
 								return 0;									//exiting the shell
 						}
-						if(status<0){
-								printf("No such file or directory.\n");
+						if(status<0){	
+								printf("Error!\n");
 						}
-						free(args);										//freeing the args array
 				}
 				free(buffer);	//freeing the buffer line					
 				free(commands);	//freeing the commands array
-
-				printf("\n");
 		}
 		return 0;
 }	
