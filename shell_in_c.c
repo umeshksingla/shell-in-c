@@ -14,6 +14,7 @@
 #include <sys/ptrace.h>
 #include <fcntl.h>
 #include <sys/resource.h>
+#include <ctype.h>
 
 uid_t getuid(void);
 struct passwd * getpwuid (uid_t uid);
@@ -562,7 +563,20 @@ int main(){
 						m=getchar();
 				}
 				buffer[k]='\0';
-
+				int v = 0,fl=1;
+				char g;
+				while(buffer[v]){
+						g = buffer[v];
+						if(isspace(g)){
+								fl=1;
+						}
+						else
+								fl=0;
+						v++;
+				}
+				if(fl==1){
+					continue;
+				}
 				char**commands={NULL};
 				commands = split_line(buffer,delim1);					//splitting the line scanned by ;
 				int i,status,j;

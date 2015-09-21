@@ -1,0 +1,8 @@
+total 64
+-rwxrwxr-x 1 umeshksingla umeshksingla 24120 Sep 21 23:21 a.out
+-rwx------ 1 umeshksingla umeshksingla     0 Sep 21 23:22 jk
+-rwx------ 1 umeshksingla umeshksingla    45 Sep 21 23:01 k
+-rw-rw-r-- 1 umeshksingla umeshksingla  1268 Sep 21 23:18 readme.md
+-rw-rw-r-- 1 umeshksingla umeshksingla 14048 Sep 21 23:21 shell_in_c.c
+-rw-rw-r-- 1 umeshksingla umeshksingla 14282 Sep 21 22:17 shell_in_c.c~
+      7      56     405
