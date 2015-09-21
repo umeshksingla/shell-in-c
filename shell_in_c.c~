@@ -106,15 +106,12 @@ void print_prompt(){
 }
 
 void sig_handler(int signo){
-		int i,j;
 		if(signo==SIGINT)
-		{		
-				printf("\n");
+		{
+				fprintf(stderr,"\n");
 				print_prompt();
-				fflush(stdout);
 		}	
-		else if(signo == SIGTSTP){
-				
+		/*else if(signo == SIGTSTP){
 				printf("i m in sigtstp\n");
 				pro*temp =(pro*)malloc(sizeof(pro));
 				temp->pid = current_proc;
@@ -124,10 +121,25 @@ void sig_handler(int signo){
 				insert_backg(temp);
 
 				kill(current_proc,SIGSTOP);
-		}
+		}*/
 
 		if(signo == SIGCHLD){
 
+				/*union wait wstat;
+				  pid_t pid;
+
+				  while(1){
+				  pid = wait3 (&wstat, WNOHANG, (struct rusage *)NULL );
+				  if (pid == 0)
+				  return;
+				  else if (pid == -1)
+				  return;
+				  else {
+				  int u = delete_backg(pid);
+				  printf ("\nPid: %d\nReturn code: %d\n", pid, wstat.w_retcode);
+				  }
+
+				  }*/
 				int status;
 				pid_t pid;
 				while((pid=waitpid(-1,&status,WNOHANG))>0)                    //return if no child has changed state
@@ -145,11 +157,9 @@ void sig_handler(int signo){
 										}
 										if(temp!=NULL)
 										{
-												fprintf(stdout,"\n%s with pid %d exited normally\n",temp->name,pid);										
-												if(temp->bg){
-													
-														i = delete_backg(pid);
-												}
+												fprintf(stdout,"%s with pid %d exited normally\n",temp->name,pid);										
+												if(temp->bg)
+														int i; i = delete_backg(pid);
 										}
 								}
 								else if(WIFSIGNALED(status))
@@ -163,11 +173,9 @@ void sig_handler(int signo){
 										}
 										if(temp!=NULL)
 										{
-												fprintf(stdout,"\n%s with pid %d signalled to exit\n",temp->name,pid);										
-												if(temp->bg){	
-													 
-														j = delete_backg(pid);
-												}
+												fprintf(stdout,"%s with pid %d signalled to exit\n",temp->name,pid);										
+												if(temp->bg)	
+														int j; j = delete_backg(pid);
 										}
 								}
 						}
@@ -304,7 +312,7 @@ int fg_c(char**command){
 										printf("No such process\n");
 						}
 						else {
-								printf("\n%s stopped\n",temp->name);	
+								printf("%s stopped\n",temp->name);	
 						}
 						tcsetpgrp(shell_terminal,shell_pgid); // return control of terminal to our shell
 						return i;
@@ -319,6 +327,8 @@ int overkill_c(){
 		while(temp){
 				if(killpg(getpgid(temp->pid),SIGKILL)!=0)
 						printf("Can't kill %s\tPID:[%d]\n",temp->name,temp->pid);
+				else
+						printf("Killed %s\n",temp->name);
 				temp=temp->next;
 		}
 		return 1;
